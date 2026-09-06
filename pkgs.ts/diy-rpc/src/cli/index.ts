@@ -7,7 +7,7 @@ import {
   type _RouterNode,
 } from "../core/_tree";
 import type { ClientBinding } from "../core/server-binding";
-import { parseArgv, generateHelp, CliParseError } from "./_parser";
+import { parseArgv, generateHelp, fmtUsageArgs, CliParseError } from "./_parser";
 
 import "../core/_cli-meta";
 
@@ -294,8 +294,9 @@ export class CliApp<TRouter extends _Router | _AnyProcedureMeta> {
       if (helpRequested) {
         // 命令级 Usage 用裁剪后的短命令名（用户实际输入的命令），非 RPC 全名
         const shortCmd = commandName(proc);
+        const args = fmtUsageArgs(def);
         console.log(
-          `Usage: ${this.config.name} ${shortCmd} [options]`,
+          `Usage: ${this.config.name} ${shortCmd} [options]${args ? ` ${args}` : ""}`,
         );
         const help = generateHelp(def, shortCmd, desc);
         if (help) console.log("\n" + help);
@@ -372,7 +373,8 @@ export class CliApp<TRouter extends _Router | _AnyProcedureMeta> {
   showNodeHelp(node: _RouteNode): void {
     if (node.kind === "proc") {
       const shortCmd = commandName(node);
-      console.log(`Usage: ${this.config.name} ${shortCmd} [options]`);
+      const args = fmtUsageArgs(node.def);
+      console.log(`Usage: ${this.config.name} ${shortCmd} [options]${args ? ` ${args}` : ""}`);
       const help = generateHelp(node.def, shortCmd, procDesc(node.def));
       if (help) console.log("\n" + help);
       return;
