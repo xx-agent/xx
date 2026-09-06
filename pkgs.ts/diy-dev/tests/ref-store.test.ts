@@ -13,7 +13,6 @@ import {
     isTagVersion,
     normalizeVersion,
     mirrorRelDir,
-    stripVersion,
     addSource,
     removeSource,
     listSpecs,

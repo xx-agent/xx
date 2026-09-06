@@ -78,20 +78,23 @@ export const refApi = RpcSchema.router({
                 }),
             }),
 
-            sync: RpcSchema.unary({
-                desc: `批量 clone 已注册 source 到 $DIY_HOME/ref/ 并写 cwd/.diy/ref.lock.yaml`,
+            /** sync 逐条进度 chunk：每处理完一个 source yield 一条；最后一条 action=done 带汇总 */
+            sync: RpcSchema.serverStream({
+                desc: `批量 clone 已注册 source 到 $DIY_HOME/ref/ 并写 cwd/.diy/ref.lock.yaml（流式进度）`,
                 input: {},
                 output: z.object({
-                    status: z.string(),
-                    data: z.object({
-                        /** clone + pull 的仓库数 */
-                        synced: z.number(),
-                        /** 本次跳过 pull 的 tag 固定仓库数 */
-                        tagSkipped: z.number(),
-                        /** 注册源总数 */
-                        total: z.number(),
-                        errors: z.array(z.object({ spec: z.string(), message: z.string() })),
-                    }),
+                    spec: z.string(),
+                    /** cloned=新克隆 pulled=分支更新 tagSkipped=tag 固定跳过 error=失败 done=结束汇总 */
+                    action: z.enum(["cloned", "pulled", "tagSkipped", "error", "done"]),
+                    message: z.string().optional(),
+                    summary: z
+                        .object({
+                            synced: z.number(),
+                            tagSkipped: z.number(),
+                            total: z.number(),
+                            errors: z.array(z.object({ spec: z.string(), message: z.string() })),
+                        })
+                        .optional(),
                 }),
             }),
 

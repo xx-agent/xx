@@ -20,12 +20,26 @@ export interface GitRunResult {
     stderr: string;
 }
 
-function run(args: string[], cwd?: string): GitRunResult {
+/** 外部 git 命令超时（ms）：clone 可能拉大仓库用长超时，pull/ls-remote 用短超时 */
+const CLONE_TIMEOUT_MS = 180_000;
+const QUICK_TIMEOUT_MS = 60_000;
+
+function run(args: string[], cwd?: string, timeoutMs: number = QUICK_TIMEOUT_MS): GitRunResult {
     const r = spawnSync("git", args, {
         cwd,
         encoding: "utf-8",
         stdio: ["ignore", "pipe", "pipe"],
+        timeout: timeoutMs,
     });
+    // 超时：spawnSync 返回 error=ETIMEDOUT、status=null
+    const errno = r.error as NodeJS.ErrnoException | undefined;
+    if (errno?.code === "ETIMEDOUT" || (r.status === null && r.signal === "SIGTERM")) {
+        return {
+            ok: false,
+            stdout: (r.stdout ?? "").trim(),
+            stderr: `git ${args[0] ?? ""} 超时（${timeoutMs / 1000}s）`,
+        };
+    }
     return {
         ok: r.status === 0,
         stdout: (r.stdout ?? "").trim(),
@@ -75,7 +89,7 @@ export function cloneMirror(opts: MirrorOpts): void {
 
     mkdirSync(dirname(opts.dir), { recursive: true });
 
-    const cl = run(["clone", url, opts.dir]);
+    const cl = run(["clone", url, opts.dir], undefined, CLONE_TIMEOUT_MS);
     if (!cl.ok) {
         try {
             rmSync(opts.dir, { recursive: true, force: true });

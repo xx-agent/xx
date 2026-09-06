@@ -58,7 +58,7 @@ export function bindRefHandlers(binding: ServerBinding, rt: RefRuntime): void {
         };
     });
 
-    binding.on(ref.sync, async () => {
+    binding.on(ref.sync, async function* () {
         git.requireGit();
         const specs = store.listSpecs(rt.cwd);
         const now = new Date().toISOString();
@@ -80,11 +80,17 @@ export function bindRefHandlers(binding: ServerBinding, rt: RefRuntime): void {
                     // 首次 clone（含按 tag/分支检出）
                     git.cloneMirror({ dir: dirAbs, url: p.url, version: p.version });
                     cloned++;
+                    yield { spec, action: "cloned" as const };
                 } else {
                     // 增量：tag 不动、分支 pull
                     const u = git.updateMirror(dirAbs, isTag);
-                    if (u.updated) pulled++;
-                    else tagSkipped++;
+                    if (u.updated) {
+                        pulled++;
+                        yield { spec, action: "pulled" as const };
+                    } else {
+                        tagSkipped++;
+                        yield { spec, action: "tagSkipped" as const, message: u.note };
+                    }
                 }
                 sourceMap[p.key] = {
                     key: p.key,
@@ -94,19 +100,20 @@ export function bindRefHandlers(binding: ServerBinding, rt: RefRuntime): void {
                     lastSync: now,
                 };
             } catch (e) {
-                errors.push({
-                    spec,
-                    message: e instanceof Error ? e.message : String(e),
-                });
+                const message = e instanceof Error ? e.message : String(e);
+                errors.push({ spec, message });
+                yield { spec, action: "error" as const, message };
             }
         }
 
         // 仅保留本次 spec 对应的条目（被 remove 的 source 在此剔除）
         store.saveRefLock(rt.cwd, { version: 1, generated: now, source: sourceMap });
 
-        return {
-            status: "ok",
-            data: {
+        // 汇总尾帧
+        yield {
+            spec: "",
+            action: "done" as const,
+            summary: {
                 synced: cloned + pulled,
                 tagSkipped,
                 total: specs.length,
@@ -118,6 +125,7 @@ export function bindRefHandlers(binding: ServerBinding, rt: RefRuntime): void {
     binding.on(ref.list, async () => {
         const lock = store.loadRefLock(rt.cwd);
         const entries: RefEntry[] = [];
+        // lock 条目（已 sync 记录）
         if (lock) {
             for (const key of Object.keys(lock.source).sort()) {
                 const e = lock.source[key]!;
@@ -128,9 +136,32 @@ export function bindRefHandlers(binding: ServerBinding, rt: RefRuntime): void {
                     version: e.version,
                     dir: absDir,
                     exists: existsSync(absDir),
-                    lastSync: lock.generated ? e.lastSync : null,
+                    lastSync: e.lastSync,
                 });
             }
+        }
+        // lock 为空（未 sync 过或 source 已变更）→ 从 diy.yaml 补「待同步」条目
+        const specs = store.listSpecs(rt.cwd);
+        if (specs.length > 0) {
+            const known = new Set(entries.map((e) => e.key));
+            for (const spec of specs) {
+                try {
+                    const p = store.parseSpec(spec);
+                    if (known.has(p.key)) continue; // 已记录
+                    const rel = store.mirrorRelDir(p.info, store.normalizeVersion(p.version));
+                    entries.push({
+                        key: p.key,
+                        url: p.url,
+                        version: p.version,
+                        dir: join(rt.home, rel),
+                        exists: false,
+                        lastSync: null,
+                    });
+                } catch {
+                    /* 解析失败的 source 跳过 */
+                }
+            }
+            entries.sort((a, b) => a.key.localeCompare(b.key));
         }
         return entries;
     });
