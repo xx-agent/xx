@@ -71,7 +71,9 @@ export function bindRefHandlers(binding: ServerBinding, rt: RefRuntime): void {
         for (const spec of specs) {
             try {
                 const p = store.parseSpec(spec);
-                const isTag = p.version != null && store.isTagVersion(p.version);
+                // 不可变版本（tag / SHA，正则初判；非 semver tag clone 后按本地 refs 消歧，
+                // updateMirror 另有 detached HEAD 安全网）
+                const isTag = p.version != null && store.isPinnedVersion(p.version);
                 const norm = store.normalizeVersion(p.version);
                 const rel = store.mirrorRelDir(p.info, norm);
                 const dirAbs = join(rt.home, rel);

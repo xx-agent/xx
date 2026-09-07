@@ -9,13 +9,15 @@
 //
 // clone 后 ref 检出策略：
 //   - 无版本 / main → 保持默认分支 HEAD（track origin/默认分支，后续可 pull）
-//   - 显式 tag（semver，如 v1.0.0）→ fetch 单 tag + checkout（detached HEAD）
-//   - 显式分支名（develop/feat.x 等）→ checkout -B <v> origin/<v>（本地 track，后续可 pull）
+//   - SHA / tag（含非 semver 如 nightly，以本地 refs/tags/ 消歧）→ detached 检出，后续不 pull
+//   - 显式分支名（develop/feat.x 等，斜杠分支整体作 ref 名）→ checkout -B <v> origin/<v>（本地 track，后续可 pull）
+//   - /tree/<分支>/<子目录> 天然歧义（分支 feat/foo 根 vs 分支 feat 下 foo 目录），一律按 ref 名整体解释，
+//     失败时提示改用 @<分支> 精确形式
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname } from "node:path";
-import { isTagVersion } from "./store";
+import { isPinnedVersion, isShaVersion } from "./store";
 
 export interface GitRunResult {
     ok: boolean;
@@ -60,14 +62,26 @@ export function verifyRemoteUrl(url: string): void {
     }
 }
 
+/** 本地是否存在该 tag（clone 拉全量 tags；loose ref 与 packed-refs 都查，纯 fs 不调 git 无噪音）。 */
+function hasLocalTag(dir: string, tag: string): boolean {
+    if (tag.includes("..")) return false; // 路径穿越守卫：走 fetch 路径安全失败
+    if (existsSync(`${dir}/.git/refs/tags/${tag}`)) return true;
+    try {
+        const packed = readFileSync(`${dir}/.git/packed-refs`, "utf-8");
+        return packed.split("\n").some((l) => l.endsWith(` refs/tags/${tag}`));
+    } catch {
+        return false;
+    }
+}
+
 export interface MirrorOpts {
     /** 镜像目标目录（绝对路径） */
     dir: string;
     /** 仓库 URL（https / git@ssh 均可） */
     url: string;
     /**
-     * 目标 ref：@ 后段。null/空 → 保持默认分支 HEAD；
-     * tag（v1.0.0 / 纯数字）→ 检出 tag；其余看作分支名检出。
+     * 目标 ref：@ 后段 / /tree/ 后段 / releases / commit 统归一处。null/空 → 保持默认分支 HEAD；
+     * SHA / tag → detached 检出；其余看作分支名检出。
      */
     version: string | null;
 }
@@ -96,23 +110,37 @@ export function cloneMirror(opts: MirrorOpts): void {
     const v = (opts.version ?? "").trim();
     if (v.length === 0 || v === "main") return; // 保持默认分支（track，可 pull）
 
-    if (isTagVersion(v)) {
-        // fetch 单 tag（含 commit）到本地 tag ref，再 detached checkout
-        if (!run(["-C", opts.dir, "fetch", "--progress", "origin", "tag", v]).ok) {
-            throw new Error(`拉取 tag '${v}' 失败，请确认仓库存在该 tag`);
+    // ref 消歧：clone 已拉全量 tags+heads。顺序：SHA → tag（含非 semver，以本地 refs 为准）→ 分支。
+    if (isShaVersion(v)) {
+        // commit：full clone 已含对象，直接 detached 检出
+        const co = run(["-C", opts.dir, "checkout", v]);
+        if (!co.ok) throw new Error(`checkout '${v}' 失败（仓库无该 commit）: ${co.stderr || ""}`);
+        return;
+    }
+    if (isPinnedVersion(v) || hasLocalTag(opts.dir, v)) {
+        // tag：本地已有直接 detached；缺失再 fetch 单 tag（兜底，如 tag 在 clone 后新建）
+        if (!hasLocalTag(opts.dir, v)) {
+            if (!run(["-C", opts.dir, "fetch", "--progress", "origin", "tag", v]).ok) {
+                throw new Error(`拉取 tag '${v}' 失败，请确认仓库存在该 tag`);
+            }
         }
         const co = run(["-C", opts.dir, "checkout", v]);
         if (!co.ok) throw new Error(`checkout '${v}' 失败: ${co.stderr || ""}`);
-    } else {
-        // 分支：fetch 并建本地 tracking 分支（origin/v 已在 clone 时拉取全部 heads）
-        const originRef = `origin/${v}`;
-        if (!existsSync(`${opts.dir}/.git/refs/remotes/${originRef}`)) {
-            const f = run(["-C", opts.dir, "fetch", "--progress", "origin", v]);
-            if (!f.ok) throw new Error(`拉取分支 '${v}' 失败，请确认仓库存在该分支`);
-        }
-        const co = run(["-C", opts.dir, "checkout", "-B", v, originRef]);
-        if (!co.ok) throw new Error(`checkout '${v}' 失败: ${co.stderr || ""}`);
+        return;
     }
+    // 分支：fetch 并建本地 tracking 分支（origin/v 已在 clone 时拉取全部 heads）
+    const originRef = `origin/${v}`;
+    if (!existsSync(`${opts.dir}/.git/refs/remotes/${originRef}`)) {
+        const f = run(["-C", opts.dir, "fetch", "--progress", "origin", v]);
+        if (!f.ok) {
+            throw new Error(
+                `拉取分支 '${v}' 失败，请确认仓库存在该分支` +
+                    `（若从 /tree/ 复制且地址含子目录如 …/tree/<分支>/<子目录>，请改用 @<分支> 精确形式）`,
+            );
+        }
+    }
+    const co = run(["-C", opts.dir, "checkout", "-B", v, originRef]);
+    if (!co.ok) throw new Error(`checkout '${v}' 失败: ${co.stderr || ""}`);
 }
 
 export interface UpdateOutcome {
@@ -123,14 +151,19 @@ export interface UpdateOutcome {
 
 /**
  * 更新已有镜像，对齐增量策略：
- *   - tag（不可变）→ 不 pull
+ *   - tag / SHA（不可变）→ 不 pull
  *   - 分支 / 无版本（track 默认分支）→ git pull --ff-only 快进到远端最新
+ * 安全网：detached HEAD（SHA / 非 semver tag 检出，正则初判漏网时）一律不 pull。
  */
 export function updateMirror(dir: string, isTag: boolean): UpdateOutcome {
     if (isTag) {
         // 无 git 命令可跑，打一行以便 sync 时用户看到该条目确实处理过
         process.stderr.write(`跳过 pull（tag 固定）: ${dir}\n`);
         return { updated: false, note: "tag 固定，跳过 pull" };
+    }
+    if (!run(["-C", dir, "symbolic-ref", "-q", "HEAD"]).ok) {
+        process.stderr.write(`跳过 pull（detached HEAD）: ${dir}\n`);
+        return { updated: false, note: "detached HEAD，跳过 pull" };
     }
     const res = run(["-C", dir, "pull", "--progress", "--ff-only", "origin"]);
     if (!res.ok) {

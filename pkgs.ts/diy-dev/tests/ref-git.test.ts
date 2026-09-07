@@ -122,3 +122,39 @@ describe("updateMirror", () => {
         expect(existsSync(join(dir, "b.txt"))).toBe(true);
     });
 });
+
+describe("非 semver tag 与 SHA 消歧", () => {
+    /** detached 断言：无当前分支 */
+    function expectDetached(dir: string): void {
+        const { status } = spawnSync("git", ["symbolic-ref", "-q", "HEAD"], {
+            cwd: dir,
+            encoding: "utf-8",
+        });
+        expect(status).not.toBe(0);
+    }
+
+    it("非 semver tag（nightly）→ 按本地 refs 消歧 detached", () => {
+        g(["tag", "nightly"], src);
+        const dir = join(root, "nightly");
+        cloneMirror({ dir, url: src, version: "nightly" });
+        expectDetached(dir);
+        expect(g(["rev-parse", "HEAD"], dir)).toBe(g(["rev-parse", "nightly"], src));
+    });
+
+    it("SHA → detached 检出", () => {
+        const sha = g(["rev-parse", "HEAD"], src);
+        expect(sha).toMatch(/^[0-9a-f]{40}$/);
+        const dir = join(root, "sha");
+        cloneMirror({ dir, url: src, version: sha });
+        expectDetached(dir);
+        expect(g(["rev-parse", "HEAD"], dir)).toBe(sha);
+    });
+
+    it("detached HEAD 的 updateMirror(isTag=false) → 安全网跳过不 pull", () => {
+        const dir = join(root, "tag");
+        cloneMirror({ dir, url: src, version: "v1.0.0" });
+        const out = updateMirror(dir, false); // 初判漏网（如 nightly）时靠 detached 兜底
+        expect(out.updated).toBe(false);
+        expect(out.note).toContain("detached");
+    });
+});

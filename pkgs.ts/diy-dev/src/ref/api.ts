@@ -43,8 +43,9 @@ export const refApi = RpcSchema.router({
       dev ref list          查看 lock 映射表（对齐本地目录 + 最后 sync 时间）
       dev ref remove <key>  从 diy.yaml 移除（不动已下载镜像）
 
-    版本语义: URL 的 @ 后段为 tag（v1.0.0）→ 检出后不更新；为分支（main/develop）或无版本
-    → 检出后 sync 时 git pull。
+    版本语义: @ 后段或 /tree/ 后段为 tag（v1.0.0）/ SHA → 检出后不更新；
+    为分支（main/develop，斜杠分支整体作 ref 名）或无版本 → 检出后 sync 时 git pull。
+    非 semver tag（如 nightly）按 clone 到的本地 refs/tags/ 自动消歧。
     `,
         children: {
             add: RpcSchema.unary({

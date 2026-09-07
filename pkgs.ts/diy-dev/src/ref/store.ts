@@ -40,6 +40,20 @@ export function isTagVersion(version: string): boolean {
     return /^v?\d+(\.\d+)*$/.test(version);
 }
 
+/** commit SHA 判定：40 位 hex（/commit/ 页复制而来，与 tag 同按不可变处理）。 */
+export function isShaVersion(version: string): boolean {
+    return /^[0-9a-f]{40}$/i.test(version);
+}
+
+/**
+ * 不可变版本判定：tag 或 SHA → detached 检出，sync 不 pull。
+ * 非 semver tag（如 nightly）正则认不出，以 clone 到的本地 refs/tags/ 为准（见 git.ts 消歧），
+ * 此处只做纯字符串初判。
+ */
+export function isPinnedVersion(version: string): boolean {
+    return isTagVersion(version) || isShaVersion(version);
+}
+
 /** 版本段兜底：null / 空 → "main"（默认分支）。 */
 export function normalizeVersion(version: string | null): string {
     return version && version.trim() ? version.trim() : "main";
@@ -55,24 +69,74 @@ export function mirrorRelDir(info: RepoInfo, version: string): string {
     return join("ref", info.host, info.owner, info.repo, version);
 }
 
+/**
+ * 把 source 串拆成纯 URL + 版本段（不校验仓库存在，供 parseSpec / stripVersion 共用）。
+ *
+ * 接受形状（浏览器地址栏直接复制）：
+ *   - https://host/owner/repo                     → 无版本
+ *   - https://host/owner/repo@<branch|tag>        → @ 版本（SSH 也用此形）
+ *   - https://host/owner/repo/tree/<ref>          → /tree/ 后段整体即 ref（斜杠分支保持完整）
+ *   - https://host/owner/repo/releases/tag/<t>    → tag
+ *   - https://host/owner/repo/commit/<sha>        → SHA
+ * query/fragment（?#）先剥离；/blob/ 等文件页与功能页明确拒绝（离线无法定位 ref）。
+ */
+function splitSpec(raw: string): { url: string; version: string | null } {
+    let t = raw.trim();
+    // 浏览器复制常带 ?plain=1 / #readme 等，先剥离（git ref 不含 ?，# 视为 fragment 舍弃）
+    const hash = t.indexOf("#");
+    if (hash !== -1) t = t.slice(0, hash);
+    const q = t.indexOf("?");
+    if (q !== -1) t = t.slice(0, q);
+    t = t.replace(/\/+$/, "");
+
+    // release 页：…/releases/tag/<t> → tag
+    let m = t.match(/^(.*?)\/releases\/tag\/([^/]+)$/);
+    if (m && parseRepoUrl(m[1]!)) return { url: m[1]!, version: m[2]!.trim() };
+
+    // commit 页：…/commit/<40 位 sha> → SHA（detached 检出）
+    m = t.match(/^(.*?)\/commit\/([0-9a-f]{40})$/i);
+    if (m && parseRepoUrl(m[1]!)) return { url: m[1]!, version: m[2]!.toLowerCase() };
+
+    // 文件页 / 功能页：ref 边界离线无法确定，明确拒绝并指路
+    const page = t.match(/\/(blob|pull|compare|commits|actions|issues|discussions|wiki|releases)(\/|$)/);
+    if (page) {
+        throw new Error(
+            `不支持的页面 URL（/${page[1]}）：请复制仓库根或 /tree/ 分支页地址，或用 @版本 形式\n  ${raw.trim()}`,
+        );
+    }
+
+    // 浏览页：…/tree/<ref>（后段整体即 ref 名）；…/tree 结尾视作仓库根
+    const ti = t.indexOf("/tree/");
+    if (ti !== -1) {
+        const url = t.slice(0, ti);
+        const v = t.slice(ti + "/tree/".length).trim();
+        if (parseRepoUrl(url) && v.length > 0) return { url, version: v };
+    } else if (t.endsWith("/tree")) {
+        const url = t.slice(0, -"/tree".length);
+        if (parseRepoUrl(url)) return { url, version: null };
+    }
+
+    // @ 版本：: 不可能出现在 git ref 中，含 : 说明 @ 属于 SSH 前缀（如 git@host:owner/repo 无版本）
+    if (t.includes("@")) {
+        const sep = t.lastIndexOf("@");
+        const v = t.slice(sep + 1);
+        if (v.includes(":")) return { url: t, version: null }; // 裸 SSH，整体即 URL
+        if (v.trim().length > 0) return { url: t.slice(0, sep), version: v.trim() };
+        return { url: t.slice(0, sep), version: null }; // 尾部 @：视作无版本
+    }
+    return { url: t, version: null };
+}
+
 /** 把 source 串拆成 URL 解析结果；spec 保留原样由调用方处理。 */
 export function parseSpec(spec: string): {
     info: RepoInfo;
-    /** 纯 URL（@ 版本剥离后） */
+    /** 纯 URL（版本段剥离后，clone 用此） */
     url: string;
-    /** @ 后版本段；null = 按 main */
+    /** 版本段（@ / /tree/ / releases / commit 统归一处）；null = 按 main */
     version: string | null;
     key: string;
 } {
-    const s = spec.trim();
-    let url = s;
-    let version: string | null = null;
-    if (s.includes("@")) {
-        const sep = s.lastIndexOf("@");
-        url = s.slice(0, sep);
-        const v = s.slice(sep + 1);
-        version = v.trim() ? v : null;
-    }
+    const { url, version } = splitSpec(spec);
     const info = parseRepoUrl(url);
     if (!info) throw new Error(`无法解析 URL: ${url}`);
     return {
@@ -93,13 +157,17 @@ export const DIY_YAML_TEMPLATE = `# diy-dev — 源码镜像配置
 # dev ref remove     移除注册（本地镜像保留）
 # dev ref sync       批量 clone 已注册 source
 #
-# source 格式: https://github.com/org/repo[@branch|@tag]
+# source 格式（二选一，浏览器地址栏复制即可）：
+#   https://github.com/org/repo[@branch|@tag]   @ 精确形式（SSH 也用此形，歧义时以此为准）
+#   https://github.com/org/repo/tree/<ref>      浏览页形式（/tree/ 后段整体即 ref）
+#   https://github.com/org/repo/releases/tag/<t> 发布页形式（按 tag）
 #   无版本 / 分支 → clone 后 sync 时 git pull 保持最新
-#   tag（v1.0.0、纯数字）→ 检出后固定，不 pull
+#   tag（v1.0.0、纯数字、nightly 等）/ commit SHA → 检出后固定，不 pull
 #
 # 示例：
 #   https://github.com/Textualize/rich
 #   https://github.com/octocat/Hello-World@v1.0.0
+#   https://github.com/nodeca/babelfish/tree/2.0.0
 
 ref:
   source: []
@@ -179,10 +247,16 @@ export function removeSource(dir: string, name: string): string | null {
     return removed;
 }
 
-/** 剥离 @版本，返回纯 URL；无 @ 原样返回。 */
+/**
+ * 剥离版本段返回纯 URL（@ / /tree/ / /releases/tag/ / /commit/ 均处理）。
+ * 解析失败回退原样返回（调用方 try/catch，不抛）。
+ */
 export function stripVersion(spec: string): string {
-    const i = spec.lastIndexOf("@");
-    return i === -1 ? spec : spec.slice(0, i);
+    try {
+        return splitSpec(spec).url;
+    } catch {
+        return spec;
+    }
 }
 
 function _writeDiyYaml(dir: string, specs: string[]): void {

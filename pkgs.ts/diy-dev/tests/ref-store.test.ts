@@ -11,8 +11,10 @@ import {
     parseRepoUrl,
     parseSpec,
     isTagVersion,
+    isPinnedVersion,
     normalizeVersion,
     mirrorRelDir,
+    stripVersion,
     addSource,
     removeSource,
     listSpecs,
@@ -155,5 +157,91 @@ describe("ref.lock.yaml 往返", () => {
         mkdirSync(join(dir, ".diy"), { recursive: true });
         writeFileSync(join(dir, ".diy", "ref.lock.yaml"), "::: 坏 yaml\n- x", "utf-8");
         expect(loadRefLock(dir)).toBeNull();
+    });
+});
+
+describe("parseSpec / 浏览器地址形式", () => {
+    it("/tree/ tag：后段即版本", () => {
+        const p = parseSpec("https://github.com/nodeca/babelfish/tree/2.0.0");
+        expect(p.url).toBe("https://github.com/nodeca/babelfish");
+        expect(p.version).toBe("2.0.0");
+        expect(p.key).toBe("github.com/nodeca/babelfish");
+    });
+
+    it("/tree/ 分支", () => {
+        expect(parseSpec("https://github.com/org/repo/tree/main").version).toBe("main");
+    });
+
+    it("/tree/ 斜杠分支保持完整", () => {
+        expect(parseSpec("https://github.com/org/repo/tree/feature/foo").version).toBe(
+            "feature/foo",
+        );
+    });
+
+    it("/tree/ 尾部斜杠与 fragment 剥离", () => {
+        expect(parseSpec("https://github.com/org/repo/tree/main/").version).toBe("main");
+        expect(parseSpec("https://github.com/org/repo/tree/main#readme").version).toBe("main");
+        expect(parseSpec("https://github.com/org/repo/tree/v1.0.0?plain=1").version).toBe(
+            "v1.0.0",
+        );
+    });
+
+    it("/releases/tag/ 按 tag", () => {
+        const p = parseSpec("https://github.com/org/repo/releases/tag/v1.2.3");
+        expect(p.url).toBe("https://github.com/org/repo");
+        expect(p.version).toBe("v1.2.3");
+    });
+
+    it("/commit/ 按 SHA", () => {
+        const sha = "a".repeat(40);
+        const p = parseSpec(`https://github.com/org/repo/commit/${sha}`);
+        expect(p.url).toBe("https://github.com/org/repo");
+        expect(p.version).toBe(sha);
+    });
+
+    it("裸 SSH 无版本可解析（@ 归属前缀不误切）", () => {
+        const p = parseSpec("git@github.com:org/repo.git");
+        expect(p.url).toBe("git@github.com:org/repo.git");
+        expect(p.version).toBeNull();
+    });
+
+    it("SSH + @tag", () => {
+        const p = parseSpec("git@github.com:org/repo@v1.0.0");
+        expect(p.version).toBe("v1.0.0");
+    });
+
+    it("/blob/ 文件页明确拒绝", () => {
+        expect(() => parseSpec("https://github.com/org/repo/blob/main/a.ts")).toThrow(/blob/);
+    });
+
+    it("/pull/ 功能页明确拒绝", () => {
+        expect(() => parseSpec("https://github.com/org/repo/pull/1")).toThrow(/pull/);
+    });
+
+    it("stripVersion 处理 /tree/ 形式", () => {
+        expect(stripVersion("https://github.com/org/repo/tree/2.0.0")).toBe(
+            "https://github.com/org/repo",
+        );
+    });
+
+    it("add 同仓库 @ 与 /tree/ 形式互替（同 key）", () => {
+        addSource(dir, "https://github.com/org/repo@v2.0.0");
+        addSource(dir, "https://github.com/org/repo/tree/v2.0.0");
+        expect(listSpecs(dir)).toEqual(["https://github.com/org/repo/tree/v2.0.0"]);
+    });
+
+    it("remove 按 owner/repo 匹配 /tree/ 注册项", () => {
+        addSource(dir, "https://github.com/org/repo/tree/2.0.0");
+        expect(removeSource(dir, "org/repo")).toBe("https://github.com/org/repo/tree/2.0.0");
+    });
+});
+
+describe("isPinnedVersion", () => {
+    it("tag 与 SHA 不可变，分支可变", () => {
+        expect(isPinnedVersion("v1.0.0")).toBe(true);
+        expect(isPinnedVersion("2.0.0")).toBe(true);
+        expect(isPinnedVersion("a".repeat(40))).toBe(true);
+        expect(isPinnedVersion("main")).toBe(false);
+        expect(isPinnedVersion("nightly")).toBe(false); // 非 semver tag 靠 clone 后消歧
     });
 });
