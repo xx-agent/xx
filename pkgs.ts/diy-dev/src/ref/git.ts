@@ -4,6 +4,9 @@
 // 为同步阻塞调用（CLI 本地进程，行为确定性优先于并发）。
 // 镜像目录作为「只读源码快照」，完整 clone 后显式检出目标 ref，避免浅历史不可达。
 //
+// 日志策略：所有 git 命令 pipe 捕获，结束后原样甩到服务端 stderr（命令回显 + stdout + stderr），
+// 调用方直接可见进展；返回的 stdout/stderr 仍保留供错误拼装。不设超时，卡住由 Ctrl+C 中断。
+//
 // clone 后 ref 检出策略：
 //   - 无版本 / main → 保持默认分支 HEAD（track origin/默认分支，后续可 pull）
 //   - 显式 tag（semver，如 v1.0.0）→ fetch 单 tag + checkout（detached HEAD）
@@ -20,31 +23,22 @@ export interface GitRunResult {
     stderr: string;
 }
 
-/** 外部 git 命令超时（ms）：clone 可能拉大仓库用长超时，pull/ls-remote 用短超时 */
-const CLONE_TIMEOUT_MS = 180_000;
-const QUICK_TIMEOUT_MS = 60_000;
-
-function run(args: string[], cwd?: string, timeoutMs: number = QUICK_TIMEOUT_MS): GitRunResult {
+/** 跑一条 git 命令：pipe 捕获，结束后把命令回显 + 输出原样甩到 stderr。无超时，卡住由 Ctrl+C 中断。 */
+function run(args: string[], cwd?: string): GitRunResult {
+    process.stderr.write(`$ git ${args.join(" ")}${cwd ? `  # ${cwd}` : ""}\n`);
     const r = spawnSync("git", args, {
         cwd,
         encoding: "utf-8",
         stdio: ["ignore", "pipe", "pipe"],
-        timeout: timeoutMs,
     });
-    // 超时：spawnSync 返回 error=ETIMEDOUT、status=null
-    const errno = r.error as NodeJS.ErrnoException | undefined;
-    if (errno?.code === "ETIMEDOUT" || (r.status === null && r.signal === "SIGTERM")) {
-        return {
-            ok: false,
-            stdout: (r.stdout ?? "").trim(),
-            stderr: `git ${args[0] ?? ""} 超时（${timeoutMs / 1000}s）`,
-        };
-    }
-    return {
-        ok: r.status === 0,
-        stdout: (r.stdout ?? "").trim(),
-        stderr: (r.stderr ?? "").trim(),
-    };
+    const ok = r.status === 0;
+    const out = (r.stdout ?? "").trim();
+    const err = (r.stderr ?? "").trim();
+    // 成功也放出来：用户要看到 git 是否进行中，而不只是失败时
+    if (out) process.stderr.write(`${out}\n`);
+    if (err) process.stderr.write(`${err}\n`);
+    if (r.error) process.stderr.write(`${(r.error as Error).message}\n`);
+    return { ok, stdout: out, stderr: err };
 }
 
 /** 检查 git 命令可用；缺失 throw 带安装提示的错误。 */
@@ -89,7 +83,7 @@ export function cloneMirror(opts: MirrorOpts): void {
 
     mkdirSync(dirname(opts.dir), { recursive: true });
 
-    const cl = run(["clone", url, opts.dir], undefined, CLONE_TIMEOUT_MS);
+    const cl = run(["clone", "--progress", url, opts.dir]);
     if (!cl.ok) {
         try {
             rmSync(opts.dir, { recursive: true, force: true });
@@ -104,7 +98,7 @@ export function cloneMirror(opts: MirrorOpts): void {
 
     if (isTagVersion(v)) {
         // fetch 单 tag（含 commit）到本地 tag ref，再 detached checkout
-        if (!run(["-C", opts.dir, "fetch", "origin", "tag", v]).ok) {
+        if (!run(["-C", opts.dir, "fetch", "--progress", "origin", "tag", v]).ok) {
             throw new Error(`拉取 tag '${v}' 失败，请确认仓库存在该 tag`);
         }
         const co = run(["-C", opts.dir, "checkout", v]);
@@ -113,7 +107,7 @@ export function cloneMirror(opts: MirrorOpts): void {
         // 分支：fetch 并建本地 tracking 分支（origin/v 已在 clone 时拉取全部 heads）
         const originRef = `origin/${v}`;
         if (!existsSync(`${opts.dir}/.git/refs/remotes/${originRef}`)) {
-            const f = run(["-C", opts.dir, "fetch", "origin", v]);
+            const f = run(["-C", opts.dir, "fetch", "--progress", "origin", v]);
             if (!f.ok) throw new Error(`拉取分支 '${v}' 失败，请确认仓库存在该分支`);
         }
         const co = run(["-C", opts.dir, "checkout", "-B", v, originRef]);
@@ -134,9 +128,11 @@ export interface UpdateOutcome {
  */
 export function updateMirror(dir: string, isTag: boolean): UpdateOutcome {
     if (isTag) {
+        // 无 git 命令可跑，打一行以便 sync 时用户看到该条目确实处理过
+        process.stderr.write(`跳过 pull（tag 固定）: ${dir}\n`);
         return { updated: false, note: "tag 固定，跳过 pull" };
     }
-    const res = run(["-C", dir, "pull", "--ff-only", "origin"]);
+    const res = run(["-C", dir, "pull", "--progress", "--ff-only", "origin"]);
     if (!res.ok) {
         const why = res.stderr || res.stdout || "git pull 失败";
         throw new Error(`git pull 失败（${dir}）: ${why}`);
