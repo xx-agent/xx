@@ -400,6 +400,58 @@ export const apiDef = RpcSchema.router({
               options: z.array(z.object({ value: z.string(), name: z.string() })).optional(),
             })),
           }),
+
+          // —— 本地自定义 agent（ai-sdk 块协议，独立于 ACP 通道）——
+          local: RpcSchema.group({
+            desc: `本地自定义 agent（ai-sdk，独立于 ACP 通道）`,
+            children: {
+              chat: RpcSchema.serverStream({
+                desc: `本地 agent 对话 — 实时逐行输出块协议 Op（JSONL）`,
+                input: {
+                  taskUri: z.string().cliArg({ desc: "任务 URI" }),
+                  message: z.string().cliArg({ desc: "用户消息" }),
+                  model: z.string().optional().cliOption({ desc: `模型（默认 mimo-v2.5，zen/go 子集见 agent local models）` }),
+                },
+                output: z.string(),
+              }),
+              cancel: RpcSchema.unary({
+                desc: `中断本地 agent 当前生成`,
+                input: {
+                  taskUri: z.string().cliArg({ desc: "任务 URI" }),
+                },
+                output: z.object({ cancelled: z.boolean() }),
+              }),
+              history: RpcSchema.unary({
+                desc: `读取本地 agent 会话的块协议 Op 日志（UI 重放用）`,
+                input: {
+                  taskUri: z.string().cliArg({ desc: "任务 URI" }),
+                },
+                output: z.array(z.any()),
+              }),
+              clear: RpcSchema.unary({
+                desc: `清空本地 agent 会话（中断生成并删除 Op/LLM 日志）`,
+                input: {
+                  taskUri: z.string().cliArg({ desc: "任务 URI" }),
+                },
+                output: z.object({ cleared: z.boolean() }),
+              }),
+              models: RpcSchema.unary({
+                desc: `列出本地 agent 可选模型（zen/go OpenAI-completions 子集）`,
+                input: {},
+                output: z.array(z.object({ id: z.string(), name: z.string() })),
+              }),
+              limits: RpcSchema.unary({
+                desc: `查询生效运行限制（默认值 < $DIY_HOME/local/limits.json < 环境变量 DIY_LOCAL_*）`,
+                input: {},
+                output: z.object({
+                  maxSteps: z.number(),
+                  maxOutputTokens: z.number(),
+                  bashTimeoutMs: z.number(),
+                  outputClipChars: z.number(),
+                }),
+              }),
+            },
+          }),
         },
       }),
 

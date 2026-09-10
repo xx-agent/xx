@@ -12,6 +12,10 @@
  */
 
 import http from "node:http";
+import { setDefaultAutoSelectFamily } from "node:net";
+// 同 main/index.ts：本机 Happy Eyeballs 双栈竞态 ETIMEDOUT，关 autoSelectFamily（留痕）
+setDefaultAutoSelectFamily(false);
+console.log("[serve][net] 已关闭 Happy Eyeballs（同 main，本机双栈竞态致公网 HTTPS 超时）");
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

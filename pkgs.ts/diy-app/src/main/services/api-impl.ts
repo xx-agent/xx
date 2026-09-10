@@ -278,6 +278,34 @@ export function bindAppHandlers(binding: ServerBinding): void {
     return mapConfigOptions(pool.getConfigOptions(input.taskUri));
   });
 
+  // —— agent.local —— 本地自定义 agent（ai-sdk 块协议，与 ACP 独立）
+  binding.on(app.agent.local.chat, async function* ({ input }) {
+    const { getLocalAgent } = await import("./local-agent");
+    for await (const op of getLocalAgent().chat(input.taskUri, input.message, input.model)) {
+      yield JSON.stringify(op);
+    }
+  });
+  binding.on(app.agent.local.cancel, async ({ input }) => {
+    const { getLocalAgent } = await import("./local-agent");
+    return { cancelled: getLocalAgent().cancel(input.taskUri) };
+  });
+  binding.on(app.agent.local.history, async ({ input }) => {
+    const { getLocalAgent } = await import("./local-agent");
+    return getLocalAgent().history(input.taskUri);
+  });
+  binding.on(app.agent.local.clear, async ({ input }) => {
+    const { getLocalAgent } = await import("./local-agent");
+    return { cleared: getLocalAgent().clear(input.taskUri) };
+  });
+  binding.on(app.agent.local.models, async () => {
+    const { getLocalAgent } = await import("./local-agent");
+    return getLocalAgent().listModels();
+  });
+  binding.on(app.agent.local.limits, async () => {
+    const { getLocalAgent } = await import("./local-agent");
+    return getLocalAgent().getLimits();
+  });
+
   // ── llmProxy ──
   binding.on(app.llmProxy.status, async () => {
     const proxy = await getLlmProxy();
