@@ -36,6 +36,8 @@ export const LOCAL_MODELS = [
     { id: "glm-5.3", name: "GLM-5.3" },
     { id: "kimi-k2.7-code", name: "Kimi K2.7 Code" },
     { id: "qwen3.7-plus", name: "Qwen3.7 Plus" },
+    { id: "muse-spark-1.2-contributor", name: "Muse Spark 1.2 Contributor (opencode-go)" },
+    { id: "muse-spark-1.3-contributor", name: "Muse Spark 1.3 Contributor (opencode-go)" },
 ];
 
 const SYSTEM = [
