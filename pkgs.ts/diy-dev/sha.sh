@@ -2,10 +2,9 @@
 #
 # ── 编写规则 ────────────────────────────────────
 # 1. 定义函数即为子命令：`foo() { ... }` → `./sha.sh foo`
-# 2. `:` 在 bash 函数名非法，原 scripts 的 `:` 用 `-` 代替：`check:browser` → `./sha.sh check-browser`
-# 3. 用 `run` 执行外部命令（带彩色日志）：`run npx vitest run`
-# 4. 可用颜色变量：$primary $secondary $error $info $reset
-# 5. 文件末尾保留 `sha "$@"` 调度入口
+# 2. 用 `run` 执行外部命令（带彩色日志）：`run npx vitest run`
+# 3. 可用颜色变量：$primary $secondary $error $info $reset
+# 4. 文件末尾保留 `sha "$@"` 调度入口
 #
 # ── 执行链 ──────────────────────────────────────
 # sha.sh → source ../../sha.common.sh → source vendor/sha/sha.bash
@@ -31,14 +30,13 @@ source "../../sha.common.sh"
 ####################################################################################
 
 clean() {
-  run rm -rf ./build ./dist
+  run rm -rf ./out ./build ./dist
 }
 
-# 本包检查：类型 + lint + 浏览器安全（禁 node:/fs/path/electron 等 import）
+# 本包检查：类型 + lint
 check() {
   typecheck
   lint
-  check-browser
 }
 # 本包自动修复：格式化 + lint 可修项
 fix() {
@@ -48,6 +46,8 @@ fix() {
 
 sync() { :; }
 
+build() { run npx vite build --config vite.cli.config.ts; }
+
 # 本包全是快速单测，无慢测试：test ≡ test-unit
 test() { run npx vitest run "$@"; }
 test-unit() { run npx vitest run "$@"; }
@@ -56,14 +56,14 @@ test-unit() { run npx vitest run "$@"; }
 # 子项目自己的命令（原 package.json scripts）
 ####################################################################################
 
-typecheck() { run npx tsc --noEmit; }
-# 浏览器安全：本包纯 TS，禁 Node/Electron 特有 API（新增依赖后必跑）
-check-browser() { run npx tsc --noEmit -p tsconfig.browser.json; }
+# 开发期跑 CLI 源码：./sha.sh dev <args>（cwd 即作用域，不 cd）
+dev() { run npx tsx src/cli/index.ts "$@"; }
 test-watch() { run npx vitest "$@"; }
-lint() { run npx oxlint src/ test/; }
-lint-fix() { run npx oxlint --fix src/ test/; }
-fmt() { run npx oxfmt --check src/ test/; }
-fmt-fix() { run npx oxfmt --write src/ test/; }
+typecheck() { run npx tsc --noEmit; }
+lint() { run npx oxlint src/; }
+lint-fix() { run npx oxlint --fix src/; }
+fmt() { run npx oxfmt --check src/; }
+fmt-fix() { run npx oxfmt --write src/; }
 
 
 sha "$@"

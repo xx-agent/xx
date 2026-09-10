@@ -12,18 +12,6 @@
     "./cli": "./src/cli/index.ts"
   },
   "files": ["src/"],
-  "scripts": {
-    "typecheck": "tsc --noEmit",
-    "check:browser": "tsc --noEmit -p tsconfig.browser.json",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "lint": "oxlint src/ test/",
-    "lint:fix": "oxlint --fix src/ test/",
-    "fmt": "oxfmt --check src/ test/",
-    "fmt:fix": "oxfmt --write src/ test/",
-    "check": "npm run typecheck && npm run lint && npm run check:browser",
-    "fix": "npm run fmt:fix && npm run lint:fix"
-  },
   "dependencies": {
     "ws": "^8.21.0",
     "zod": "^4.4.3"

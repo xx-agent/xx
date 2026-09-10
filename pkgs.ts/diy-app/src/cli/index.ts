@@ -69,7 +69,7 @@ function mainEntry(): string {
 function launchApp(cfg: RuntimeConfig): ChildProcess {
   const main = mainEntry();
   if (!existsSync(main)) {
-    throw new Error(`diy 管控台未构建: ${main}（先 npm run build）`);
+    throw new Error(`diy 管控台未构建: ${main}（先 ./sha.sh build）`);
   }
 
   // DIY_MIRROR_DISPLAY=1: 窗口定位到副屏（iPad Sidecar），避免遮挡主屏

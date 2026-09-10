@@ -48,4 +48,4 @@ src/
 - `sideEffects: false` — 允许 bundler 安全 tree-shake
 
 警告：如果新增依赖或模块，务必先确认它不引入 Node/Electron 特有 API。
-跑 `npm run check:browser` 验证。
+跑 `./sha.sh check-browser` 验证。

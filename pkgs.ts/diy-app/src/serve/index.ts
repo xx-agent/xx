@@ -58,7 +58,7 @@ if (portIdx >= 0) {
 async function main() {
   if (!fs.existsSync(STATIC_DIR)) {
     console.error(`[diy/serve] 静态文件目录不存在: ${STATIC_DIR}`);
-    console.error(`  请先构建 renderer: npm run build:renderer`);
+    console.error(`  请先构建 renderer: ./sha.sh build-renderer`);
     process.exit(1);
   }
 

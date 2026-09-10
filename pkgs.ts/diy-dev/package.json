@@ -10,19 +10,6 @@
     "bin/",
     "out/"
   ],
-  "scripts": {
-    "dev": "tsx src/cli/index.ts",
-    "build": "vite build --config vite.cli.config.ts",
-    "typecheck": "tsc --noEmit",
-    "lint": "oxlint src/",
-    "lint:fix": "oxlint --fix src/",
-    "fmt": "oxfmt --check src/",
-    "fmt:fix": "oxfmt --write src/",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "check": "npm run typecheck && npm run lint",
-    "fix": "npm run fmt:fix && npm run lint:fix"
-  },
   "dependencies": {
     "@diy/rpc": "^0.1.0",
     "js-yaml": "^5.2.1",

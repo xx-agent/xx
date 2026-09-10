@@ -10,8 +10,8 @@
 ### 开发参数
 
 ```
-npm run dev                    # 默认 ./build/home + port 18888（与 ./diy.sh 同数据）
-npm run dev -- --port 18888    # 指定端口（测试端口冲突）
+./sha.sh dev                    # 默认 ./build/home + port 18888（与 ./diy.sh 同数据）
+./sha.sh dev --port 18888       # 指定端口（测试端口冲突）
 ```
 
 数据隔离由 `DIY_HOME` 驱动（`diy.sh` / `electron-dev.mts` 默认 `./build/home`，测试用 `mkdtemp`），不再有 `--temp` flag。
@@ -80,7 +80,7 @@ Chromium 把实际端口写入 `DIY_HOME/electron_user_data/DevToolsActivePort`�
 
 | 启动方式 | 行为 |
 |---------|------|
-| `npm run dev` | 轮询该文件，启动日志打印完整 `attach` 命令 |
+| `./sha.sh dev` | 轮询该文件，启动日志打印完整 `attach` 命令 |
 | `./diy.sh <cmd>` | 冷启动 app 时在 stderr 提示 `attach` 命令 |
 | `tests/electron-test.ts` | `startElectronTest()` 返回的 `cdpUrl` 已是可直接 attach 的完整 URL |
 
@@ -95,7 +95,7 @@ cat "$DIY_HOME/electron_user_data/DevToolsActivePort"    # 或 curl http://127.0
 - ❌ **不要用 `playwright-cli open http://localhost:5173/`** 测 dev 界面。Vite URL 直开时
   没有 Electron preload，`window.transport` 不存在，`ChannelClientBinding` 抛
   `Cannot read properties of undefined (reading 'on')` → 白屏。要看真界面只能 attach CDP，
-  或走 `npm run serve`（它在 `index.html` 注入 WS transport）。
+  或走 `./sha.sh serve`（它在 `index.html` 注入 WS transport）。
 - ⚠️ `run-code` 必须传 arrow 函数：`playwright-cli run-code "async (page) => { ... }"`；
   裸语句 `await page.x()` 会 `SyntaxError`。
 - ⚠️ `.playwright/cli.config.json` 的 `contextOptions` **对 attach 无效**（只对 `open`
@@ -108,7 +108,7 @@ cat "$DIY_HOME/electron_user_data/DevToolsActivePort"    # 或 curl http://127.0
 ### 窗口定位副屏
 
 `DIY_MIRROR_DISPLAY=1` 时窗口居中到非主屏（优先 Sidecar iPad），避免遮挡开发用的主屏。
-`npm run dev` / `./diy.sh` / 意图测试均已默认注入；单屏环境自动回退默认定位。
+`./sha.sh dev` / `./diy.sh` / 意图测试均已默认注入；单屏环境自动回退默认定位。
 
 ### 硬性约束：子进程 stdio 的 pipe 规则
 
@@ -123,7 +123,7 @@ cat "$DIY_HOME/electron_user_data/DevToolsActivePort"    # 或 curl http://127.0
 
 因此：
 
-- 常驻/分离式 spawn（CLI、`npm run dev`）→ 一律 `inherit` 或 `ignore`
+- 常驻/分离式 spawn（CLI、`./sha.sh dev`）→ 一律 `inherit` 或 `ignore`
 - 测试 spawn（父进程活着的 `electron-test.ts`）→ 允许 `pipe`，但**必须挂 `data` 监听持续排空**；
   只保留有界尾部（如末 4KB）供失败诊断
 - ⚠️ **不得**为了解析 `DevTools listening on ...` 而 pipe stderr —— 取 CDP 地址一律读
@@ -189,9 +189,9 @@ grep FATAL <DIY_HOME>/log/*.log        # 只看致命错误
 ### 启动
 
 ```
-npm run serve                    # 默认 18888
-npm run serve -- --port <port>    # 指定端口
-npm run serve:build              # 生产构建
+./sha.sh serve                    # 默认 18888
+./sha.sh serve --port <port>      # 指定端口
+./sha.sh serve-build              # 生产构建
 ```
 
 ### 架构

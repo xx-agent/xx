@@ -19,7 +19,7 @@ _realpath() {
 
 APP_DIR="$(dirname "$(_realpath "$0")")"
 CLI="$APP_DIR/out/cli/index.js"
-[[ -f "$CLI" ]] || { echo "diy 未构建/未安装: $CLI（先 npm run build:cli）" >&2; exit 1; }
+[[ -f "$CLI" ]] || { echo "diy 未构建/未安装: $CLI（先 ./sha.sh build-cli）" >&2; exit 1; }
 
 cd "$APP_DIR"
 exec env DIY_HOME="${DIY_HOME:-$HOME/.diy}" node "$CLI" "$@"

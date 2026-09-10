@@ -3,7 +3,7 @@
 //
 // 安全：每次启动分配独立临时 HOME（symlink 必要配置但不读写用户数据），
 // 绝不触及 ~/.diy / ~/.config/diy-app 等生产数据。
-// 依赖：已构建产物（out/main + out/preload + out/renderer），由 npm run build 保证。
+// 依赖：已构建产物（out/main + out/preload + out/renderer），由 ./sha.sh build 保证。
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { connect, type ClientHttp2Session } from "node:http2";

@@ -12,10 +12,10 @@ Vite 8 + Electron + shadcn/ui 桌面应用模板。
 
 ```bash
 npm install
-npm run dev      # 开发模式（renderer dev server + watch main/preload + electron）
-npm run build    # 生产构建
-npm start        # 运行生产构建
-npm run clean    # 清理 out/
+./sha.sh dev      # 开发模式（renderer dev server + watch main/preload + electron）
+./sha.sh build    # 生产构建
+./sha.sh start    # 运行生产构建
+./sha.sh clean    # 清理 out/
 ```
 
 ## CLI 入口
@@ -27,7 +27,7 @@ npm run clean    # 清理 out/
 bin/diy task list                     # 发布后（node 跑 out/cli/index.js，数据根 ~/.diy）
 ```
 
-发布前先 `npm run build:cli` 生成 `out/cli/index.js`（生成 `bin/diy` 处自动 symlink 到 PATH 即可）。
+发布前先 `./sha.sh build-cli` 生成 `out/cli/index.js`（生成 `bin/diy` 处自动 symlink 到 PATH 即可）。
 
 ## 开发模式快捷键
 
