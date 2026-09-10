@@ -159,6 +159,24 @@ export function parseArgv(def: _AnyProcedureMeta, argv: string[]): ParsedInput {
   }
 }
 
+/**
+ * 位置参数 usage 片段：按 schema 声明顺序输出 `<url>` / `[name]`（可选带方括号）。
+ * 无位置参数返回空串。供 CliApp 拼 `Usage: <cmd> [options] <arg>...`。
+ */
+export function fmtUsageArgs(def: _AnyProcedureMeta): string {
+  const schema = def.inputSchema;
+  if (!(schema instanceof z.ZodObject)) return '';
+  const shape = (schema as any).shape as Record<string, z.ZodTypeAny>;
+  const parts: string[] = [];
+  for (const [key, field] of Object.entries(shape)) {
+    const argMeta = _getCliArgMeta(field);
+    if (!argMeta) continue;
+    const ph = argMeta.placeholder ?? key;
+    parts.push(isOptional(field) ? `[${ph}]` : `<${ph}>`);
+  }
+  return parts.join(' ');
+}
+
 /** @internal */
 export function generateHelp(def: _AnyProcedureMeta, cmdName: string, description?: string): string {
   const schema = def.inputSchema;

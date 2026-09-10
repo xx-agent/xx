@@ -1,0 +1,64 @@
+{
+  "name": "diy-dev",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "dev": "bin/dev"
+  },
+  "files": [
+    "bin/",
+    "out/"
+  ],
+  "scripts": {
+    "dev": "tsx src/cli/index.ts",
+    "build": "vite build --config vite.cli.config.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "oxlint src/",
+    "lint:fix": "oxlint --fix src/",
+    "fmt": "oxfmt --check src/",
+    "fmt:fix": "oxfmt --write src/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check": "npm run typecheck && npm run lint",
+    "fix": "npm run fmt:fix && npm run lint:fix"
+  },
+  "dependencies": {
+    "@diy/rpc": "^0.1.0",
+    "js-yaml": "^5.2.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "oxfmt": "^0.57.0",
+    "oxlint": "^1.72.0",
+    "tsx": "^4.23.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.3"
+  },
+  "oxfmt": {
+    "indent": 2,
+    "lineWidth": 100,
+    "quotes": "single",
+    "ignore": [
+      "out/",
+      "node_modules/"
+    ]
+  },
+  "oxlint": {
+    "rules": {
+      "no-unused-vars": "warn",
+      "no-console": "off",
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        {
+          "argsIgnorePattern": "^_"
+        }
+      ]
+    },
+    "ignorePatterns": [
+      "node_modules/"
+    ]
+  },
+  "description": "diy-dev — dev 相关 CLI 工具（v1: 源码镜像 ref 简化版）",
+  "author": "ccc <ccc@users.noreply.github.com>"
+}

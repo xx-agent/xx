@@ -110,4 +110,25 @@ describe("CliApp.showNodeHelp", () => {
     expect(out).toContain("创建任务，写入 state.yaml。"); // 子命令 desc 首行
     expect(out).toContain("list");
   });
+
+  it("叶子命令 usage 带上位置参数（[options] <arg>），无参时不追加", () => {
+    const app = new CliApp({
+      name: "diy",
+      router: apiDef,
+      transport: stubTransport,
+    });
+    const tree = (app as any).tree;
+    const taskNode = tree.children.find((c: any) => c.name === "task");
+
+    // 叶子 create：有 cliArg title → Usage 显示 <title>
+    const createNode = taskNode.children.find((c: any) => c.name === "create");
+    const out = captureLog(() => app.showNodeHelp(createNode));
+    expect(out).toContain("Usage: diy task create [options] <title>");
+
+    // 叶子 list：只有 cliOption，无位置参数 → 不追加
+    const listNode = taskNode.children.find((c: any) => c.name === "list");
+    const out2 = captureLog(() => app.showNodeHelp(listNode));
+    expect(out2).toContain("Usage: diy task list [options]");
+    expect(out2).not.toContain("[options] ");
+  });
 });
