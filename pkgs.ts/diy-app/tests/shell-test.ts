@@ -261,8 +261,8 @@ export class ShellTest {
   }
 
   /** 执行一条命令（持久 session，共享上下文；cwd 已是仓库根，./diy.sh 自然可执行） */
-  async run(cmd: string): Promise<RunResult> {
-    return this.getSession().run(cmd);
+  async run(cmd: string, timeoutMs?: number): Promise<RunResult> {
+    return this.getSession().run(cmd, timeoutMs);
   }
 
   /** 便捷：直接运行本地 diy CLI（./diy.sh，靠 cwd=仓库根 定位） */
