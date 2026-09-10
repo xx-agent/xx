@@ -76,7 +76,7 @@ export interface LocalAgentLimits {
 }
 
 export const DEFAULT_LIMITS: LocalAgentLimits = {
-    maxSteps: 8,
+    maxSteps: 60,
     maxOutputTokens: 4000,
     bashTimeoutMs: 30_000,
     outputClipChars: 6000,
